@@ -459,10 +459,10 @@
           { "Cod": 18008002, "Nome": "JOAO PEDRO OLIVEIRA (MOTORISTA EEX)", "Cargo": "Motorista", "Escala": "06:00 12:00 13:00 15:20 CONLOG", "Equipe": "FROTA - BLC" }
         ];
 
-        let globalAtivos = JSON.parse(localStorage.getItem('globalAtivos_v11')) || defaultAtivos;
-        let globalChecklists = JSON.parse(localStorage.getItem('globalChecklists_v11')) || [];
-        let globalFaltas = JSON.parse(localStorage.getItem('globalFaltas_v11')) || [];
-        let bucketFolgas = JSON.parse(localStorage.getItem('bucketFolgas_v11')) || [];
+        let globalAtivos = JSON.parse(localStorage.getItem('globalAtivos_v13')) || defaultAtivos;
+        let globalChecklists = JSON.parse(localStorage.getItem('globalChecklists_v13')) || [];
+        let globalFaltas = JSON.parse(localStorage.getItem('globalFaltas_v13')) || [];
+        let bucketFolgas = JSON.parse(localStorage.getItem('bucketFolgas_v13')) || [];
         let escopoAtual = 'GERAL';
         let filterStatusHeatmap = 'TODOS';
         let gaugeChartInstance = null;
@@ -476,9 +476,33 @@
             return text.toString().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim().replace(/\s+/g, ' ');
         }
 
+        function escapeQuotes(str) {
+            if (!str) return "";
+            return str.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+        }
+
         function isCargoIgnorado(cargo) {
             const normCargo = normalizeText(cargo);
             return cargosIgnorados.some(c => normCargo.includes(c));
+        }
+
+        // FUNÇÃO MODIFICADA: Carrega automaticamente o arquivo dados.json do GitHub se existir
+        async function carregarDadosDoGitHub() {
+            try {
+                const response = await fetch('dados.json?' + new Date().getTime()); // Evita cache
+                if (response.ok) {
+                    const parsed = await response.json();
+                    if (parsed.folgas) bucketFolgas = parsed.folgas;
+                    if (parsed.ativos) globalAtivos = parsed.ativos.filter(a => !isCargoIgnorado(a.Cargo));
+                    if (parsed.checklists) globalChecklists = parsed.checklists;
+                    
+                    localStorage.setItem('globalAtivos_v13', JSON.stringify(globalAtivos));
+                    localStorage.setItem('globalChecklists_v13', JSON.stringify(globalChecklists));
+                    localStorage.setItem('bucketFolgas_v13', JSON.stringify(bucketFolgas));
+                }
+            } catch (e) {
+                console.log("Nenhum arquivo dados.json externo encontrado, usando dados locais.");
+            }
         }
 
         function setEscopo(tipo) {
@@ -576,7 +600,7 @@
             const url = URL.createObjectURL(blob);
             const a = document.createElement("a");
             a.href = url;
-            a.download = `config-aderencia-${new Date().toISOString().split('T')[0]}.json`;
+            a.download = `dados.json`; // Nome padrão sugerido para o GitHub
             a.click();
             URL.revokeObjectURL(url);
         }
@@ -592,9 +616,9 @@
                     if (parsed.ativos) globalAtivos = parsed.ativos.filter(a => !isCargoIgnorado(a.Cargo));
                     if (parsed.checklists) globalChecklists = parsed.checklists;
                     
-                    localStorage.setItem('globalAtivos_v11', JSON.stringify(globalAtivos));
-                    localStorage.setItem('globalChecklists_v11', JSON.stringify(globalChecklists));
-                    localStorage.setItem('bucketFolgas_v11', JSON.stringify(bucketFolgas));
+                    localStorage.setItem('globalAtivos_v13', JSON.stringify(globalAtivos));
+                    localStorage.setItem('globalChecklists_v13', JSON.stringify(globalChecklists));
+                    localStorage.setItem('bucketFolgas_v13', JSON.stringify(bucketFolgas));
 
                     document.getElementById('countAtivosHeader').innerText = globalAtivos.length;
                     renderBucketBadges();
@@ -621,7 +645,7 @@
             const selectAlvo = document.getElementById('bucketAlvo');
             if (tipo === 'TRABALHO_EXTRA' || tipo === 'FOLGA_INDIVIDUAL') {
                 globalAtivos.forEach(a => {
-                    selectAlvo.innerHTML += `<option value="${a.Nome}">${a.Nome} (${a.Cargo})</option>`;
+                    selectAlvo.innerHTML += `<option value="${escapeQuotes(a.Nome)}">${a.Nome} (${a.Cargo})</option>`;
                 });
             } else {
                 selectAlvo.innerHTML = `
@@ -644,14 +668,14 @@
             }
 
             bucketFolgas.push({ data, tipo, alvo });
-            localStorage.setItem('bucketFolgas_v11', JSON.stringify(bucketFolgas));
+            localStorage.setItem('bucketFolgas_v13', JSON.stringify(bucketFolgas));
             renderBucketBadges();
             runEngine();
         }
 
         function removerExcecaoBucket(index) {
             bucketFolgas.splice(index, 1);
-            localStorage.setItem('bucketFolgas_v11', JSON.stringify(bucketFolgas));
+            localStorage.setItem('bucketFolgas_v13', JSON.stringify(bucketFolgas));
             renderBucketBadges();
             runEngine();
         }
@@ -722,7 +746,9 @@
             else return diaSemana >= 1 && diaSemana <= 6;
         }
 
-        window.addEventListener('DOMContentLoaded', () => {
+        // INICIALIZAÇÃO AUTOMÁTICA BUSCANDO O DADOS.JSON DO GITHUB
+        window.addEventListener('DOMContentLoaded', async () => {
+            await carregarDadosDoGitHub();
             globalAtivos = globalAtivos.filter(a => !isCargoIgnorado(a.Cargo));
             document.getElementById('countAtivosHeader').innerText = globalAtivos.length;
             renderBucketBadges();
@@ -764,7 +790,7 @@
 
                     if (novosAtivos.length > 0) {
                         globalAtivos = novosAtivos;
-                        localStorage.setItem('globalAtivos_v11', JSON.stringify(globalAtivos));
+                        localStorage.setItem('globalAtivos_v13', JSON.stringify(globalAtivos));
                         document.getElementById('countAtivosHeader').innerText = globalAtivos.length;
                         atualizarSeletorBucket();
                     }
@@ -824,7 +850,7 @@
                         };
                     }).filter(c => c.Data !== "" && c.Motorista !== "");
 
-                    localStorage.setItem('globalChecklists_v11', JSON.stringify(globalChecklists));
+                    localStorage.setItem('globalChecklists_v13', JSON.stringify(globalChecklists));
                     ajustarDatasAuto();
                 }
 
@@ -838,11 +864,11 @@
                             globalFaltas.push({ RawText: l, Motivo: "Ausência Identificada" });
                         }
                     });
-                    localStorage.setItem('globalFaltas_v11', JSON.stringify(globalFaltas));
+                    localStorage.setItem('globalFaltas_v13', JSON.stringify(globalFaltas));
                 }
 
                 runEngine();
-                alert("Dados processados e atualizados com sucesso!");
+                alert("Dados processados com sucesso! Lembre-se de exportar o arquivo 'dados.json' e subi-lo no GitHub para atualizar para todos.");
             } catch (err) {
                 console.error(err);
                 alert("Erro ao ler os arquivos. Certifique-se de usar arquivos nos formatos .xlsx ou .txt.");
@@ -1119,9 +1145,9 @@
                     }
 
                     if (isClickableChecklist) {
-                        row += `<td class="${cls} clickable-cell" title="Clique para ver detalhes do checklist" onclick="openDrawerChecklist('${colab.nome}', '${h.data}')">${icon}</td>`;
+                        row += `<td class="${cls} clickable-cell" title="Clique para ver detalhes do checklist" onclick="openDrawerChecklist('${escapeQuotes(colab.nome)}', '${h.data}')">${icon}</td>`;
                     } else if (isClickableOcorrencia) {
-                        row += `<td class="${cls} clickable-cell" title="Clique para abrir o Formulário de Ocorrência" onclick="openDrawerOcorrencia('${colab.nome}', '${colab.cargo}', '${h.data}')">${icon}</td>`;
+                        row += `<td class="${cls} clickable-cell" title="Clique para abrir o Formulário de Ocorrência" onclick="openDrawerOcorrencia('${escapeQuotes(colab.nome)}', '${escapeQuotes(colab.cargo)}', '${h.data}')">${icon}</td>`;
                     } else {
                         row += `<td class="${cls}" title="${h.data}: ${h.status}">${icon}</td>`;
                     }
@@ -1136,7 +1162,6 @@
             tfoot.innerHTML = `<tr>${footRow}</tr>`;
         }
 
-        // ABRIR FORMULÁRIO DE OCORRÊNCIA (AO CLICAR NA BOLINHA VERMELHA)
         function openDrawerOcorrencia(nomeColab, cargoColab, dataStr) {
             const drawer = document.getElementById('investigationDrawer');
             const backdrop = document.getElementById('drawerBackdrop');
@@ -1144,7 +1169,6 @@
             const content = document.getElementById('drawerContent');
 
             title.innerHTML = `<i class="fa-solid fa-file-lines text-danger"></i> Formulário de Ocorrências`;
-
             const dataFormatada = dataStr.split('-').reverse().join('/');
 
             content.innerHTML = `
@@ -1153,7 +1177,6 @@
                         <h5 class="fw-bold text-uppercase mb-1">FORMULÁRIO DE OCORRÊNCIAS</h5>
                         <p class="text-muted small mb-0">Controle de Aderência Operacional</p>
                     </div>
-
                     <div class="row g-2 mb-3 small">
                         <div class="col-8">
                             <strong>DATA:</strong> <input type="text" class="form-control form-control-sm d-inline-block w-75" value="${dataFormatada}">
@@ -1168,23 +1191,19 @@
                             <strong>CARGO:</strong> <input type="text" class="form-control form-control-sm" value="${cargoColab}">
                         </div>
                     </div>
-
                     <div class="mb-3">
                         <label class="form-label small fw-bold text-danger">Ocorrência (para uso exclusivo do empregador):</label>
                         <textarea class="form-control form-control-sm" rows="3">Colaborador acima identificado não realizou o checklist obrigatório no dia ${dataFormatada}.</textarea>
                     </div>
-
                     <div class="mb-3">
                         <label class="form-label small fw-bold">Justificativa / Relato (Para uso exclusivo do colaborador):</label>
                         <textarea class="form-control form-control-sm" rows="3" placeholder="Digite aqui a justificativa relatada pelo colaborador..."></textarea>
                     </div>
-
                     <div class="row g-2 mb-3 small border-top pt-2">
                         <div class="col-4 text-center fw-bold text-muted">Entrevistador</div>
                         <div class="col-4 text-center fw-bold text-muted">Colaborador</div>
                         <div class="col-4 text-center fw-bold text-muted">Testemunhas</div>
                     </div>
-
                     <div class="mb-3 small border p-2 rounded bg-light">
                         <div class="mb-1"><strong>Testemunhas:</strong></div>
                         <div class="row g-2">
@@ -1194,7 +1213,6 @@
                             <div class="col-6 mt-1">RG/CPF: <input type="text" class="form-control form-control-sm"></div>
                         </div>
                     </div>
-
                     <div class="mb-3">
                         <label class="form-label small fw-bold">Providência:</label>
                         <div class="form-check">
@@ -1206,7 +1224,6 @@
                             <label class="form-check-label small" for="provSim">( ) Sim - Motivo: <input type="text" class="form-control form-control-sm d-inline-block w-75" placeholder="Especifique..."></label>
                         </div>
                     </div>
-
                     <div class="text-end mt-4 no-print">
                         <button class="btn btn-secondary btn-sm" onclick="closeDrawer()">Fechar</button>
                         <button class="btn btn-primary btn-sm px-4 fw-bold" onclick="window.print()"><i class="fa-solid fa-print"></i> Imprimir / Gerar PDF</button>
@@ -1218,7 +1235,6 @@
             backdrop.classList.add('show');
         }
 
-        // ABRIR DRAWER COM OS DETALHES DO CHECKLIST REALIZADO (AO CLICAR NA BOLINHA VERDE)
         function openDrawerChecklist(nomeColab, dataStr) {
             const drawer = document.getElementById('investigationDrawer');
             const backdrop = document.getElementById('drawerBackdrop');
@@ -1323,9 +1339,9 @@
             const ofensores = list.filter(l => l.pendentes > 0);
             container.innerHTML = `
                 <div class="col-md-6"><div class="p-3 border rounded bg-light text-dark">💡 Aderência atual para o escopo [<strong>${escopoAtual}</strong>] está em <strong>${aderencia}%</strong>.</div></div>
-                <div class="col-md-6"><div class="p-3 border rounded bg-light text-dark">🔴 <strong>Nova Ação:</strong> Clique em qualquer bolinha vermelha do Heatmap para abrir o Formulário de Ocorrência institucional preenchido!</div></div>
+                <div class="col-md-6"><div class="p-3 border rounded bg-light text-dark">🌐 <strong>Modo Compartilhado Ativo:</strong> O site agora lê o arquivo <strong>dados.json</strong> direto do GitHub para todos os usuários!</div></div>
                 <div class="col-md-6"><div class="p-3 border rounded bg-light text-dark">⚠️ Existem <strong>${ofensores.length} colaboradores</strong> com checklists não realizados no período.</div></div>
-                <div class="col-md-6"><div class="p-3 border rounded bg-light text-dark">🔄 Use a impressão integrada no painel para gerar o PDF ou imprimir a ocorrência.</div></div>
+                <div class="col-md-6"><div class="p-3 border rounded bg-light text-dark">🔄 Para atualizar os dados para todos, basta exportar o JSON e enviá-lo para o GitHub como <strong>dados.json</strong>.</div></div>
             `;
         }
 
