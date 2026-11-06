@@ -1,0 +1,1339 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Executivo - Aderência Operacional</title>
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" rel="stylesheet">
+    <!-- SheetJS (XLSX) -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --bg-body: #f8fafc;
+            --bg-card: #ffffff;
+            --text-main: #1e293b;
+            --text-muted: #64748b;
+            --border-color: #e2e8f0;
+            --card-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+        }
+        [data-theme="dark"] {
+            --bg-body: #0f172a;
+            --bg-card: #1e293b;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --border-color: #334155;
+            --card-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+        }
+        body {
+            background-color: var(--bg-body);
+            color: var(--text-main);
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            transition: background-color 0.3s, color 0.3s;
+        }
+        .card-custom {
+            background-color: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            box-shadow: var(--card-shadow);
+            transition: transform 0.2s, background-color 0.3s;
+        }
+        .card-custom:hover { transform: translateY(-2px); }
+        .stat-card { border-left: 5px solid #3b82f6; }
+        .table { color: var(--text-main); }
+        .scrollable-table-container {
+            max-height: 320px;
+            overflow-y: auto;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+        }
+        th.sortable {
+            cursor: pointer;
+            user-select: none;
+            white-space: nowrap;
+        }
+        th.sortable:hover {
+            background-color: rgba(59, 130, 246, 0.1) !important;
+        }
+        .sort-icon {
+            font-size: 0.75rem;
+            margin-left: 4px;
+            opacity: 0.4;
+        }
+        th.sortable.active-sort .sort-icon {
+            opacity: 1;
+            color: #3b82f6;
+        }
+        .filter-badge {
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+            user-select: none;
+            opacity: 0.75;
+        }
+        .filter-badge:hover, .filter-badge.active {
+            opacity: 1;
+            transform: scale(1.05);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+        }
+        .clickable-cell {
+            cursor: pointer;
+            transition: transform 0.1s;
+        }
+        .clickable-cell:hover {
+            transform: scale(1.15);
+        }
+        .drawer {
+            position: fixed; top: 0; right: -680px; width: 650px; height: 100%;
+            background-color: var(--bg-card); box-shadow: -5px 0 25px rgba(0,0,0,0.2);
+            z-index: 1050; transition: right 0.3s ease-in-out; overflow-y: auto;
+            padding: 24px; border-left: 1px solid var(--border-color);
+        }
+        .drawer.open { right: 0; }
+        .drawer-backdrop {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.5); z-index: 1040; display: none;
+        }
+        .drawer-backdrop.show { display: block; }
+        .bg-folga { background-color: #94a3b8 !important; color: white; }
+
+        @media print {
+            body * { visibility: hidden; }
+            #drawerContent, #drawerContent * { visibility: visible; }
+            #drawerContent { position: absolute; left: 0; top: 0; width: 100%; }
+            .no-print { display: none !important; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Header Executivo -->
+    <header class="navbar navbar-expand-lg navbar-dark bg-dark shadow-sm px-4 py-3 mb-4">
+        <div class="container-fluid">
+            <a class="navbar-brand fw-bold d-flex align-items-center gap-2" href="#">
+                <i class="fa-solid fa-truck-ramp-box text-primary fa-lg"></i>
+                <span>Dashboard Aderência Operacional & Motoristas</span>
+            </a>
+            <div class="d-flex align-items-center gap-2">
+                <button class="btn btn-outline-info btn-sm" onclick="exportarConfiguracaoJSON()">
+                    <i class="fa-solid fa-download"></i> Exportar Config (.json)
+                </button>
+                <label class="btn btn-outline-warning btn-sm mb-0">
+                    <i class="fa-solid fa-upload"></i> Importar Config
+                    <input type="file" id="importJsonInput" accept=".json" style="display: none;" onchange="importarConfiguracaoJSON(event)">
+                </label>
+                <button class="btn btn-outline-light btn-sm ms-2" onclick="toggleTheme()">
+                    <i class="fa-solid fa-moon" id="themeIcon"></i> Alternar Tema
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <div class="container-fluid px-4 mb-5">
+        
+        <!-- Central de Upload de Arquivos -->
+        <div class="card card-custom p-4 mb-4">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5 class="fw-bold mb-0"><i class="fa-solid fa-cloud-arrow-up text-primary"></i> Central de Entrada e Atualização de Dados</h5>
+                <span class="badge bg-secondary">Base Elegível Ativa: <span id="countAtivosHeader">0</span> colaboradores</span>
+            </div>
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label small fw-bold">1. Checklist (Saídas e Retornos).xlsx</label>
+                    <input class="form-control form-control-sm" type="file" id="fileChecklist" accept=".xlsx, .xls">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label small fw-bold">2. ControleFaltas / Chat (.txt)</label>
+                    <input class="form-control form-control-sm" type="file" id="fileFaltas" accept=".txt">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label small fw-bold">3. Planilha de Ativos.xlsx (Opcional)</label>
+                    <input class="form-control form-control-sm" type="file" id="fileAtivos" accept=".xlsx, .xls">
+                </div>
+            </div>
+            <div class="mt-3 text-end">
+                <button class="btn btn-primary px-4 fw-bold" onclick="processarArquivos()">
+                    <i class="fa-solid fa-gears"></i> Processar Dados / Atualizar Base
+                </button>
+            </div>
+        </div>
+
+        <!-- BUCKET DE FILTRO DE PERÍODO -->
+        <div class="card card-custom p-4 mb-4 border-success">
+            <h5 class="fw-bold mb-3 text-success"><i class="fa-solid fa-calendar-days"></i> Período de Análise (Ajustado Automaticamente ao Maior Período)</h5>
+            <div class="row g-3 align-items-end">
+                <div class="col-md-6">
+                    <label class="form-label small fw-bold">Data Inicial</label>
+                    <input type="date" id="filtroDataInicio" class="form-control form-control-sm" onchange="runEngine()">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label small fw-bold">Data Final</label>
+                    <input type="date" id="filtroDataFim" class="form-control form-control-sm" onchange="runEngine()">
+                </div>
+            </div>
+        </div>
+
+        <!-- BOTÕES DE ESCOPO -->
+        <div class="card card-custom p-3 mb-4">
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
+                <div>
+                    <span class="fw-bold small text-muted d-block mb-1"><i class="fa-solid fa-layer-group text-primary"></i> Escopo de Visualização Rápida</span>
+                    <div class="btn-group" role="group" aria-label="Botões de Escopo">
+                        <button type="button" class="btn btn-outline-primary btn-sm px-4 fw-bold active" id="btnEscopoGeral" onclick="setEscopo('GERAL')">
+                            <i class="fa-solid fa-globe me-1"></i> Aderência Geral
+                        </button>
+                        <button type="button" class="btn btn-outline-primary btn-sm px-4 fw-bold" id="btnEscopoDU" onclick="setEscopo('DU')">
+                            <i class="fa-solid fa-sun me-1"></i> Aderência DU (Diurno)
+                        </button>
+                        <button type="button" class="btn btn-outline-primary btn-sm px-4 fw-bold" id="btnEscopoAZ" onclick="setEscopo('AZ')">
+                            <i class="fa-solid fa-moon me-1"></i> Aderência AZ (Noturno/Vesp)
+                        </button>
+                    </div>
+                </div>
+                <div class="text-muted small">
+                    Filtro Ativo: <strong id="txtFiltroAtivo" class="text-primary">Geral</strong>
+                </div>
+            </div>
+        </div>
+
+        <!-- BUCKET DE EXCEÇÕES E FOLGAS CUSTOMIZADAS -->
+        <div class="card card-custom p-4 mb-4 border-primary">
+            <h5 class="fw-bold mb-3 text-primary"><i class="fa-solid fa-calendar-plus"></i> Bucket de Folgas e Exceções Operacionais</h5>
+            <p class="text-muted small">Adicione folgas ou inclua colaboradores que trabalharam em dias de folga (Turno Extra).</p>
+            <div class="row g-3 align-items-end">
+                <div class="col-md-3">
+                    <label class="form-label small fw-bold">Data</label>
+                    <input type="date" id="bucketData" class="form-control form-control-sm" value="2026-11-03">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small fw-bold">Tipo de Exceção:</label>
+                    <select id="bucketTipo" class="form-select form-select-sm" onchange="atualizarSeletorBucket()">
+                        <option value="FOLGA_GERAL">Dar Folga (Turno / Todos)</option>
+                        <option value="FOLGA_INDIVIDUAL">Dar Folga (Colaborador Esp.)</option>
+                        <option value="TRABALHO_EXTRA">Trabalhou no Dia de Folga (Turno Extra)</option>
+                    </select>
+                </div>
+                <div class="col-md-4" id="divAlvoBucket">
+                    <label class="form-label small fw-bold" id="labelAlvoBucket">Aplicar Para:</label>
+                    <select id="bucketAlvo" class="form-select form-select-sm">
+                        <option value="TODOS">Todos os Colaboradores Ativos</option>
+                        <option value="NOTURNO">Turno Noturno (Início 21h/22h)</option>
+                        <option value="VESPERTINO">Turno Vespertino (Início 14h)</option>
+                        <option value="DIURNO">Turno Diurno (Manhã)</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <button class="btn btn-success btn-sm w-100 fw-bold" onclick="adicionarExcecaoBucket()">
+                        <i class="fa-solid fa-plus"></i> Adicionar
+                    </button>
+                </div>
+            </div>
+            <div class="mt-3" id="listaBucketContainer" style="display: none;">
+                <span class="small fw-bold text-muted d-block mb-1">Exceções Ativas no Bucket:</span>
+                <div id="listaBucketBadges" class="d-flex flex-wrap gap-2"></div>
+            </div>
+        </div>
+
+        <!-- Filtros Globais Adicionais -->
+        <div class="card card-custom p-3 mb-4">
+            <div class="row g-3 align-items-end">
+                <div class="col-md-4">
+                    <label class="form-label small text-muted">Cargo</label>
+                    <select id="filterCargo" class="form-select form-select-sm" onchange="runEngine()">
+                        <option value="">Todos os Cargos Elegíveis</option>
+                        <option value="Motorista">Motorista (Meta: 2 Checklists/Dia)</option>
+                        <option value="Auxiliar Movimentação">Auxiliar Movimentação (Meta: 1/Dia)</option>
+                        <option value="Operador de Empilhadeira">Operador de Empilhadeira (Meta: 1/Dia)</option>
+                    </select>
+                </div>
+                <div class="col-md-4 text-end ms-auto">
+                    <button class="btn btn-outline-secondary btn-sm w-100" onclick="limparFiltros()">Limpar Filtros</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- KPI Principal e Cards Executivos -->
+        <div class="row g-4 mb-4">
+            <div class="col-xl-4 col-lg-5">
+                <div class="card card-custom h-100 p-4 text-center d-flex flex-column justify-content-between">
+                    <div>
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span class="text-uppercase text-muted fw-bold small">KPI PRINCIPAL</span>
+                            <span class="badge bg-light text-dark border px-2 py-1 small">Meta: 95%</span>
+                        </div>
+                        <h5 class="fw-bold text-dark mb-2" style="letter-spacing: 0.5px;">ADERÊNCIA OPERACIONAL</h5>
+                        <div style="position: relative; height: 160px; width: 100%; margin-top: 10px;">
+                            <canvas id="gaugeChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="mt-3 pt-3 border-top">
+                        <div class="row text-center small text-muted">
+                            <div class="col-4">
+                                <span class="d-block text-secondary">Crítico</span>
+                                <strong class="text-danger">&lt; 90%</strong>
+                            </div>
+                            <div class="col-4 border-start border-end">
+                                <span class="d-block text-secondary">Atenção</span>
+                                <strong class="text-warning" style="color: #d97706 !important;">90% - 94.9%</strong>
+                            </div>
+                            <div class="col-4">
+                                <span class="d-block text-secondary">Conforme</span>
+                                <strong class="text-success">&ge; 95%</strong>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-xl-8 col-lg-7">
+                <div class="row g-3 h-100 align-content-between">
+                    <div class="col-md-4">
+                        <div class="card card-custom p-3 stat-card">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <span class="text-muted small d-block">Elegíveis Na Base</span>
+                                    <h3 class="fw-bold mb-0" id="cardElegiveis">0</h3>
+                                </div>
+                                <i class="fa-solid fa-users fa-2x text-primary opacity-50"></i>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card card-custom p-3 stat-card" style="border-left-color: #10b981;">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <span class="text-muted small d-block">Checklists Realizados</span>
+                                    <h3 class="fw-bold mb-0 text-success" id="cardRealizaram">0</h3>
+                                </div>
+                                <i class="fa-solid fa-circle-check fa-2x text-success opacity-50"></i>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card card-custom p-3 stat-card" style="border-left-color: #ef4444;">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <span class="text-muted small d-block">Checklists Não Realizados</span>
+                                    <h3 class="fw-bold mb-0 text-danger" id="cardNaoRealizaram">0</h3>
+                                </div>
+                                <i class="fa-solid fa-circle-xmark fa-2x text-danger opacity-50"></i>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card card-custom p-3 stat-card" style="border-left-color: #6b7280;">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <span class="text-muted small d-block">Abonados</span>
+                                    <h3 class="fw-bold mb-0 text-secondary" id="cardAbonados">0</h3>
+                                </div>
+                                <i class="fa-solid fa-user-shield fa-2x text-secondary opacity-50"></i>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card card-custom p-3 stat-card" style="border-left-color: #3b82f6;">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <span class="text-muted small d-block">Aderência Geral</span>
+                                    <h3 class="fw-bold mb-0 text-primary" id="cardAderencia">0%</h3>
+                                </div>
+                                <i class="fa-solid fa-chart-pie fa-2x text-primary opacity-50"></i>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card card-custom p-3 stat-card" style="border-left-color: #f59e0b;">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <span class="text-muted small d-block">Maiores Ofensores</span>
+                                    <h3 class="fw-bold mb-0 text-warning" id="cardOfensoresCount">0</h3>
+                                </div>
+                                <i class="fa-solid fa-triangle-exclamation fa-2x text-warning opacity-50"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Módulo de Análise Executiva -->
+        <div class="card card-custom p-4 mb-4">
+            <h5 class="fw-bold mb-3"><i class="fa-solid fa-wand-magic-sparkles text-warning"></i> Análise Executiva Automática</h5>
+            <div id="aiInsights" class="row g-3">
+                <div class="col-12 text-muted">Carregue o arquivo de checklist para processar a análise inteligente...</div>
+            </div>
+        </div>
+
+        <!-- Ranking de Ofensores -->
+        <div class="card card-custom p-4 mb-4">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5 class="fw-bold mb-0"><i class="fa-solid fa-ranking-star text-danger"></i> Ranking dos Maiores Ofensores</h5>
+                <span class="text-muted small">Clique nos títulos das colunas (▲/▼) para ordenar</span>
+            </div>
+            <div class="scrollable-table-container">
+                <table class="table table-hover align-middle mb-0" id="rankingTable">
+                    <thead class="table-light sticky-top">
+                        <tr>
+                            <th class="sortable" onclick="sortTable('rankingTable', 0)">Status <span class="sort-icon">▲▼</span></th>
+                            <th class="sortable" onclick="sortTable('rankingTable', 1)">Nome <span class="sort-icon">▲▼</span></th>
+                            <th class="sortable" onclick="sortTable('rankingTable', 2)">Cargo <span class="sort-icon">▲▼</span></th>
+                            <th class="sortable" onclick="sortTable('rankingTable', 3)">Escala / Horário <span class="sort-icon">▲▼</span></th>
+                            <th class="sortable" onclick="sortTable('rankingTable', 4)">Metas Escaladas <span class="sort-icon">▲▼</span></th>
+                            <th class="sortable" onclick="sortTable('rankingTable', 5)">Realizados <span class="sort-icon">▲▼</span></th>
+                            <th class="sortable" onclick="sortTable('rankingTable', 6)">Checklists Não Realizados <span class="sort-icon">▲▼</span></th>
+                            <th class="sortable" onclick="sortTable('rankingTable', 7)">Aderência % <span class="sort-icon">▲▼</span></th>
+                        </tr>
+                    </thead>
+                    <tbody id="rankingTableBody">
+                        <tr><td colspan="8" class="text-center text-muted">Aguardando arquivo de checklist.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Heatmap Gerencial -->
+        <div class="card card-custom p-4 mb-4">
+            <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+                <h5 class="fw-bold mb-0 d-flex align-items-center gap-2">
+                    <i class="fa-solid fa-fire text-danger"></i> Heatmap Operacional
+                </h5>
+                <div class="d-flex flex-wrap gap-1 align-items-center">
+                    <span class="small fw-bold text-muted me-1">Filtrar por Status:</span>
+                    <span class="badge bg-secondary filter-badge active" id="btnFilterStatus_TODOS" onclick="setFilterStatusHeatmap('TODOS')">Todos</span>
+                    <span class="badge bg-success filter-badge" id="btnFilterStatus_Realizado" onclick="setFilterStatusHeatmap('Realizado')">🟢 100%</span>
+                    <span class="badge bg-warning text-dark filter-badge" id="btnFilterStatus_Parcial" onclick="setFilterStatusHeatmap('Parcial')">🟡 Parcial</span>
+                    <span class="badge bg-danger filter-badge" id="btnFilterStatus_Não Realizado" onclick="setFilterStatusHeatmap('Não Realizado')">🔴 Não Realizado</span>
+                    <span class="badge bg-secondary filter-badge" id="btnFilterStatus_Abonado" onclick="setFilterStatusHeatmap('Abonado')">⚪ Abonado</span>
+                    <span class="badge bg-folga filter-badge" id="btnFilterStatus_Folga Escala" onclick="setFilterStatusHeatmap('Folga Escala')">🟦 Folga</span>
+                </div>
+            </div>
+            <div class="table-responsive" style="max-height: 420px;">
+                <table class="table table-sm table-bordered text-center align-middle small" id="heatmapTable">
+                    <thead class="sticky-top table-light"></thead>
+                    <tbody></tbody>
+                    <tfoot class="sticky-bottom table-dark fw-bold"></tfoot>
+                </table>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Drawer de Investigação -->
+    <div class="drawer-backdrop" id="drawerBackdrop" onclick="closeDrawer()"></div>
+    <div class="drawer" id="investigationDrawer">
+        <div class="d-flex justify-content-between align-items-center mb-4 pb-2 border-bottom no-print">
+            <h5 class="fw-bold mb-0" id="drawerTitle"><i class="fa-solid fa-user-gear text-primary"></i> Detalhamento</h5>
+            <button class="btn-close" onclick="closeDrawer()"></button>
+        </div>
+        <div id="drawerContent"></div>
+    </div>
+
+    <script>
+        let defaultAtivos = [
+          { "Cod": 18007627, "Nome": "RONISON DOS SANTOS SILVA", "Cargo": "Operador de Empilhadeira", "Escala": "06:00 11:00 12:00 14:20 RG CON", "Equipe": "APOIO - BLC - 470" },
+          { "Cod": 18005423, "Nome": "VILSON RICARDO CASTELINI", "Cargo": "Auxiliar Movimentação", "Escala": "06:00 12:30 13:30 14:20 CONLOG", "Equipe": "APOIO - BLC - 470" },
+          { "Cod": 18007765, "Nome": "RODRIGO BRANDAO DA SILVA", "Cargo": "Auxiliar Movimentação", "Escala": "06:30 12:30 13:30 14:50 CONLOG", "Equipe": "APOIO - BLC - 470" },
+          { "Cod": 18007827, "Nome": "GEOVAN MOISES MIRANDA DE OLIVEIRA", "Cargo": "Auxiliar Movimentação", "Escala": "22:00 01:30 02:30 05:25 CONLOG", "Equipe": "APOIO - BLC - 470" },
+          { "Cod": 18007829, "Nome": "MATHEUS LEANDRO BUCHELE", "Cargo": "Operador de Empilhadeira", "Escala": "22:00 01:30 02:30 05:25 CONLOG", "Equipe": "APOIO - BLC - 470" },
+          { "Cod": 18007830, "Nome": "MAYKE KAUE SILVA DE SOUZA", "Cargo": "Auxiliar Movimentação", "Escala": "14:00 17:30 18:30 22:12 CONLOG", "Equipe": "APOIO - BLC - 470" },
+          { "Cod": 18007786, "Nome": "JADSON CARLOS PARANHOS DE SOUZA", "Cargo": "Auxiliar Movimentação", "Escala": "22:00 01:30 02:30 05:25 CONLOG", "Equipe": "APOIO - BLC - 470" },
+          { "Cod": 18007802, "Nome": "KLEBER DOS SANTOS", "Cargo": "Operador de Empilhadeira", "Escala": "22:00 01:30 02:30 05:25 CONLOG", "Equipe": "APOIO - BLC - 470" },
+          { "Cod": 18007803, "Nome": "FRANCISCO JAILSON DE FREITAS FERNANDES", "Cargo": "Operador de Empilhadeira", "Escala": "22:00 01:30 02:30 05:25 CONLOG", "Equipe": "APOIO - BLC - 470" },
+          { "Cod": 18007805, "Nome": "DIONATA DA SILVA RODRIGUES", "Cargo": "Auxiliar Movimentação", "Escala": "22:00 01:30 02:30 05:25 CONLOG", "Equipe": "APOIO - BLC - 470" },
+          { "Cod": 18007693, "Nome": "MOISES GONCALVES", "Cargo": "Operador de Empilhadeira", "Escala": "22:00 01:30 02:30 05:25 CONLOG", "Equipe": "APOIO - BLC - 470" },
+          { "Cod": 18007705, "Nome": "MARIA DA CONCEICAO DOS SANTOS SILVA", "Cargo": "Operador de Empilhadeira", "Escala": "14:00 17:30 18:30 22:12 CONLOG", "Equipe": "APOIO - BLC - 470" },
+          { "Cod": 18007718, "Nome": "MICHEL ANTONIO DA SILVA BORGES", "Cargo": "Auxiliar Movimentação", "Escala": "14:00 17:30 18:30 22:12 CONLOG", "Equipe": "APOIO - BLC - 470" },
+          { "Cod": 18007720, "Nome": "CARLOS ANDRE BISPO DE SOUSA SANTOS", "Cargo": "Operador de Empilhadeira", "Escala": "21:00 01:00 02:00 04:25 CONLOG", "Equipe": "APOIO - BLC - 470" },
+          { "Cod": 18007736, "Nome": "EVANGILDO NASCIMENTO", "Cargo": "Auxiliar Movimentação", "Escala": "14:00 17:30 18:30 22:12 CONLOG", "Equipe": "APOIO - BLC - 470" },
+          { "Cod": 18007758, "Nome": "GEYSON ALEXANDRE DA SILVA", "Cargo": "Auxiliar Movimentação", "Escala": "06:30 12:30 13:30 14:50 CONLOG", "Equipe": "APOIO - BLC - 470" },
+          { "Cod": 18007761, "Nome": "ROSIVAN SANTOS MIRANDA", "Cargo": "Operador de Empilhadeira", "Escala": "14:00 17:30 18:30 22:12 CONLOG", "Equipe": "APOIO - BLC - 470" },
+          { "Cod": 18007567, "Nome": "WILSON DOS SANTOS NAVEGANTES", "Cargo": "Auxiliar Movimentação", "Escala": "06:30 12:30 13:30 14:50 CONLOG", "Equipe": "APOIO - BLC - 470" },
+          { "Cod": 18007604, "Nome": "LUCAS MARCAL DE SOUSA", "Cargo": "Auxiliar Movimentação", "Escala": "06:30 12:30 13:30 14:50 CONLOG", "Equipe": "APOIO - BLC - 470" },
+          { "Cod": 18007612, "Nome": "LUIZ HENRIQUE BATISTA MARINHO", "Cargo": "Auxiliar Movimentação", "Escala": "06:30 12:30 13:30 14:50 CONLOG", "Equipe": "APOIO - BLC - 470" },
+          { "Cod": 18007618, "Nome": "JEAN ROGERIO BITTENCOURT DA SILVA", "Cargo": "Auxiliar Movimentação", "Escala": "06:30 12:30 13:30 14:50 CONLOG", "Equipe": "APOIO - BLC - 470" },
+          { "Cod": 18008001, "Nome": "MARCOS SILVA (MOTORISTA EEX)", "Cargo": "Motorista", "Escala": "06:00 12:00 13:00 15:20 CONLOG", "Equipe": "FROTA - BLC" },
+          { "Cod": 18008002, "Nome": "JOAO PEDRO OLIVEIRA (MOTORISTA EEX)", "Cargo": "Motorista", "Escala": "06:00 12:00 13:00 15:20 CONLOG", "Equipe": "FROTA - BLC" }
+        ];
+
+        let globalAtivos = JSON.parse(localStorage.getItem('globalAtivos_v11')) || defaultAtivos;
+        let globalChecklists = JSON.parse(localStorage.getItem('globalChecklists_v11')) || [];
+        let globalFaltas = JSON.parse(localStorage.getItem('globalFaltas_v11')) || [];
+        let bucketFolgas = JSON.parse(localStorage.getItem('bucketFolgas_v11')) || [];
+        let escopoAtual = 'GERAL';
+        let filterStatusHeatmap = 'TODOS';
+        let gaugeChartInstance = null;
+        let sortDirections = {};
+
+        const termosAbono = ["falta", "abs", "absenteismo", "nao compareceu", "sem contato", "afastado", "atestado", "acompanhante", "maternidade", "folga medica", "licenca", "doente", "dor"];
+        const cargosIgnorados = ["aprendiz", "mecanico", "manobrista", "adm", "administrativo", "supervisor", "lider", "analista", "assistente", "auxiliar operacional"];
+
+        function normalizeText(text) {
+            if (!text) return "";
+            return text.toString().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim().replace(/\s+/g, ' ');
+        }
+
+        function isCargoIgnorado(cargo) {
+            const normCargo = normalizeText(cargo);
+            return cargosIgnorados.some(c => normCargo.includes(c));
+        }
+
+        function setEscopo(tipo) {
+            escopoAtual = tipo;
+            document.getElementById('btnEscopoGeral').classList.remove('active');
+            document.getElementById('btnEscopoDU').classList.remove('active');
+            document.getElementById('btnEscopoAZ').classList.remove('active');
+
+            if (tipo === 'GERAL') {
+                document.getElementById('btnEscopoGeral').classList.add('active');
+                document.getElementById('txtFiltroAtivo').innerText = 'Geral';
+            } else if (tipo === 'DU') {
+                document.getElementById('btnEscopoDU').classList.add('active');
+                document.getElementById('txtFiltroAtivo').innerText = 'DU (Diurno)';
+            } else if (tipo === 'AZ') {
+                document.getElementById('btnEscopoAZ').classList.add('active');
+                document.getElementById('txtFiltroAtivo').innerText = 'AZ (Noturno/Vespertino)';
+            }
+            runEngine();
+        }
+
+        function setFilterStatusHeatmap(status) {
+            filterStatusHeatmap = status;
+            const buttons = document.querySelectorAll('.filter-badge');
+            buttons.forEach(b => b.classList.remove('active'));
+            
+            const btnTarget = document.getElementById(`btnFilterStatus_${status}`);
+            if (btnTarget) btnTarget.classList.add('active');
+            
+            runEngine();
+        }
+
+        function ajustarDatasAuto() {
+            let datasSet = new Set(["2026-11-01", "2026-11-02", "2026-11-03", "2026-11-04", "2026-11-05"]);
+            globalChecklists.forEach(c => {
+                if (c.Data && c.Data.length === 10) datasSet.add(c.Data);
+            });
+            const arrayDatas = Array.from(datasSet).sort();
+            
+            if (arrayDatas.length > 0) {
+                document.getElementById('filtroDataInicio').value = arrayDatas[0];
+                document.getElementById('filtroDataFim').value = arrayDatas[arrayDatas.length - 1];
+            }
+        }
+
+        function toggleTheme() {
+            const html = document.documentElement;
+            const newTheme = html.getAttribute("data-theme") === "dark" ? "light" : "dark";
+            html.setAttribute("data-theme", newTheme);
+            localStorage.setItem("theme", newTheme);
+            document.getElementById("themeIcon").className = newTheme === "dark" ? "fa-solid fa-sun" : "fa-solid fa-moon";
+        }
+
+        function sortTable(tableId, colIndex) {
+            const table = document.getElementById(tableId);
+            const tbody = table.querySelector('tbody');
+            const rows = Array.from(tbody.querySelectorAll('tr'));
+            
+            if (rows.length === 0 || rows[0].cells.length <= 1) return;
+
+            const key = `${tableId}-${colIndex}`;
+            sortDirections[key] = !sortDirections[key];
+            const isAsc = sortDirections[key];
+
+            const headers = table.querySelectorAll('th.sortable');
+            headers.forEach((th, idx) => {
+                th.classList.remove('active-sort');
+                const icon = th.querySelector('.sort-icon');
+                if (icon) icon.innerHTML = '▲▼';
+                if (idx === colIndex) {
+                    th.classList.add('active-sort');
+                    if (icon) icon.innerHTML = isAsc ? '▲' : '▼';
+                }
+            });
+
+            rows.sort((rowA, rowB) => {
+                let cellA = rowA.cells[colIndex] ? rowA.cells[colIndex].innerText.trim() : '';
+                let cellB = rowB.cells[colIndex] ? rowB.cells[colIndex].innerText.trim() : '';
+
+                let numA = parseFloat(cellA.replace('%', '').replace(',', '.'));
+                let numB = parseFloat(cellB.replace('%', '').replace(',', '.'));
+
+                if (!isNaN(numA) && !isNaN(numB)) {
+                    return isAsc ? numA - numB : numB - numA;
+                }
+                return isAsc ? cellA.localeCompare(cellB) : cellB.localeCompare(cellA);
+            });
+
+            rows.forEach(row => tbody.appendChild(row));
+        }
+
+        function exportarConfiguracaoJSON() {
+            const configData = { ativos: globalAtivos, folgas: bucketFolgas, checklists: globalChecklists };
+            const blob = new Blob([JSON.stringify(configData, null, 2)], { type: "application/json" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `config-aderencia-${new Date().toISOString().split('T')[0]}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function importarConfiguracaoJSON(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const parsed = JSON.parse(e.target.result);
+                    if (parsed.folgas) bucketFolgas = parsed.folgas;
+                    if (parsed.ativos) globalAtivos = parsed.ativos.filter(a => !isCargoIgnorado(a.Cargo));
+                    if (parsed.checklists) globalChecklists = parsed.checklists;
+                    
+                    localStorage.setItem('globalAtivos_v11', JSON.stringify(globalAtivos));
+                    localStorage.setItem('globalChecklists_v11', JSON.stringify(globalChecklists));
+                    localStorage.setItem('bucketFolgas_v11', JSON.stringify(bucketFolgas));
+
+                    document.getElementById('countAtivosHeader').innerText = globalAtivos.length;
+                    renderBucketBadges();
+                    atualizarSeletorBucket();
+                    ajustarDatasAuto();
+                    runEngine();
+                    alert("Configurações importadas com sucesso!");
+                } catch (err) {
+                    alert("Erro ao ler o arquivo JSON.");
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function atualizarSeletorBucket() {
+            const tipo = document.getElementById('bucketTipo').value;
+            const divAlvo = document.getElementById('divAlvoBucket');
+
+            divAlvo.innerHTML = `
+                <label class="form-label small fw-bold" id="labelAlvoBucket">${tipo === 'TRABALHO_EXTRA' || tipo === 'FOLGA_INDIVIDUAL' ? 'Selecionar Colaborador' : 'Aplicar Para:'}</label>
+                <select id="bucketAlvo" class="form-select form-select-sm"></select>
+            `;
+
+            const selectAlvo = document.getElementById('bucketAlvo');
+            if (tipo === 'TRABALHO_EXTRA' || tipo === 'FOLGA_INDIVIDUAL') {
+                globalAtivos.forEach(a => {
+                    selectAlvo.innerHTML += `<option value="${a.Nome}">${a.Nome} (${a.Cargo})</option>`;
+                });
+            } else {
+                selectAlvo.innerHTML = `
+                    <option value="TODOS">Todos os Colaboradores Ativos</option>
+                    <option value="NOTURNO">Turno Noturno (Início 21h/22h)</option>
+                    <option value="VESPERTINO">Turno Vespertino (Início 14h)</option>
+                    <option value="DIURNO">Turno Diurno (Manhã)</option>
+                `;
+            }
+        }
+
+        function adicionarExcecaoBucket() {
+            const data = document.getElementById('bucketData').value;
+            const tipo = document.getElementById('bucketTipo').value;
+            const alvo = document.getElementById('bucketAlvo').value;
+
+            if (!data) {
+                alert("Selecione uma data válida!");
+                return;
+            }
+
+            bucketFolgas.push({ data, tipo, alvo });
+            localStorage.setItem('bucketFolgas_v11', JSON.stringify(bucketFolgas));
+            renderBucketBadges();
+            runEngine();
+        }
+
+        function removerExcecaoBucket(index) {
+            bucketFolgas.splice(index, 1);
+            localStorage.setItem('bucketFolgas_v11', JSON.stringify(bucketFolgas));
+            renderBucketBadges();
+            runEngine();
+        }
+
+        function renderBucketBadges() {
+            const container = document.getElementById('listaBucketContainer');
+            const badgesDiv = document.getElementById('listaBucketBadges');
+            badgesDiv.innerHTML = '';
+
+            if (bucketFolgas.length === 0) {
+                container.style.display = 'none';
+                return;
+            }
+
+            container.style.display = 'block';
+            bucketFolgas.forEach((f, idx) => {
+                let badgeClass = 'bg-primary';
+                let texto = '';
+                if (f.tipo === 'FOLGA_GERAL' || f.tipo === 'FOLGA_INDIVIDUAL') {
+                    texto = `🏖️ Folga (${f.data.split('-').reverse().join('/')}) - Alvo: ${f.alvo}`;
+                } else {
+                    badgeClass = 'bg-success';
+                    texto = `⚡ Turno Extra (${f.data.split('-').reverse().join('/')}) - Colaborador: ${f.alvo}`;
+                }
+
+                badgesDiv.innerHTML += `
+                    <span class="badge ${badgeClass} p-2 d-flex align-items-center gap-2">
+                        <span>${texto}</span>
+                        <i class="fa-solid fa-xmark" style="cursor: pointer;" onclick="removerExcecaoBucket(${idx})"></i>
+                    </span>
+                `;
+            });
+        }
+
+        function isDiaTrabalho(dataStr, escalaStr, colabNome) {
+            for (let b of bucketFolgas) {
+                if (b.data === dataStr && b.tipo === 'TRABALHO_EXTRA') {
+                    if (normalizeText(b.alvo) === normalizeText(colabNome)) return true;
+                }
+            }
+
+            for (let b of bucketFolgas) {
+                if (b.data === dataStr && (b.tipo === 'FOLGA_GERAL' || b.tipo === 'FOLGA_INDIVIDUAL')) {
+                    if (b.tipo === 'FOLGA_GERAL') {
+                        if (b.alvo === 'TODOS') return false;
+                        const isNight = escalaStr.includes("22:00") || escalaStr.includes("21:00");
+                        const isVespertine = escalaStr.startsWith("14:00");
+                        const isDiurno = !isNight && !isVespertine;
+
+                        if (b.alvo === 'NOTURNO' && isNight) return false;
+                        if (b.alvo === 'VESPERTINO' && isVespertine) return false;
+                        if (b.alvo === 'DIURNO' && isDiurno) return false;
+                    } else if (b.tipo === 'FOLGA_INDIVIDUAL') {
+                        if (normalizeText(b.alvo) === normalizeText(colabNome)) return false;
+                    }
+                }
+            }
+
+            const parts = dataStr.split('-');
+            const dateObj = new Date(parts[0], parts[1] - 1, parts[2]);
+            const diaSemana = dateObj.getDay();
+
+            const isNightShift = escalaStr.includes("22:00") || escalaStr.includes("21:00");
+            const isVespertineShift = escalaStr.startsWith("14:00");
+
+            if (isNightShift) return diaSemana >= 0 && diaSemana <= 5;
+            else if (isVespertineShift) return diaSemana >= 1 && diaSemana <= 6;
+            else return diaSemana >= 1 && diaSemana <= 6;
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            globalAtivos = globalAtivos.filter(a => !isCargoIgnorado(a.Cargo));
+            document.getElementById('countAtivosHeader').innerText = globalAtivos.length;
+            renderBucketBadges();
+            atualizarSeletorBucket();
+            ajustarDatasAuto();
+            runEngine();
+        });
+
+        async function processarArquivos() {
+            try {
+                const fChecklist = document.getElementById('fileChecklist').files[0];
+                const fAtivos = document.getElementById('fileAtivos').files[0];
+                const fFaltas = document.getElementById('fileFaltas').files[0];
+
+                if (fAtivos) {
+                    const dataAtivos = await fAtivos.arrayBuffer();
+                    const wbAtivos = XLSX.read(dataAtivos);
+                    const jsonAtivos = XLSX.utils.sheet_to_json(wbAtivos.Sheets[wbAtivos.SheetNames[0]]);
+
+                    const novosAtivos = [];
+                    jsonAtivos.forEach(row => {
+                        let keys = Object.keys(row);
+                        let kNome = keys.find(k => normalizeText(k).includes('nome') || normalizeText(k).includes('motorista') || normalizeText(k).includes('colaborador'));
+                        let kCargo = keys.find(k => normalizeText(k).includes('cargo') || normalizeText(k).includes('funcao'));
+                        let kCod = keys.find(k => normalizeText(k).includes('cod') || normalizeText(k).includes('matricula'));
+                        let kEscala = keys.find(k => normalizeText(k).includes('escala') || normalizeText(k).includes('horario'));
+                        let kEquipe = keys.find(k => normalizeText(k).includes('equipe') || normalizeText(k).includes('projeto') || normalizeText(k).includes('cc'));
+
+                        let nome = kNome ? row[kNome].toString().trim() : '';
+                        let cargo = kCargo ? row[kCargo].toString().trim() : 'Operação';
+                        let cod = kCod ? row[kCod] : 0;
+                        let escala = kEscala ? row[kEscala].toString() : '07:00 11:30 12:30 15:20 CONLOG';
+                        let equipe = kEquipe ? row[kEquipe].toString() : 'Operação';
+
+                        if (nome && !isCargoIgnorado(cargo)) {
+                            novosAtivos.push({ Cod: cod, Nome: nome, Cargo: cargo, Escala: escala, Equipe: equipe });
+                        }
+                    });
+
+                    if (novosAtivos.length > 0) {
+                        globalAtivos = novosAtivos;
+                        localStorage.setItem('globalAtivos_v11', JSON.stringify(globalAtivos));
+                        document.getElementById('countAtivosHeader').innerText = globalAtivos.length;
+                        atualizarSeletorBucket();
+                    }
+                }
+
+                if (fChecklist) {
+                    const dataChk = await fChecklist.arrayBuffer();
+                    const wbChk = XLSX.read(dataChk);
+                    const sheet = wbChk.Sheets[wbChk.SheetNames[0]];
+                    const jsonChk = XLSX.utils.sheet_to_json(sheet);
+                    
+                    globalChecklists = jsonChk.map(row => {
+                        let keys = Object.keys(row);
+                        let kData = keys.find(k => normalizeText(k) === 'data');
+                        let kMot = keys.find(k => normalizeText(k).includes('motorista') || normalizeText(k).includes('colaborador'));
+                        let kSub = keys.find(k => normalizeText(k).includes('subtipo') || normalizeText(k).includes('tipo'));
+
+                        let rawDate = kData ? row[kData] : '';
+                        let formattedDate = "";
+                        
+                        if (typeof rawDate === 'number') {
+                            const d = new Date((rawDate - (25567 + 2)) * 86400 * 1000);
+                            formattedDate = d.toISOString().split('T')[0];
+                        } else if (rawDate) {
+                            let strDate = rawDate.toString().trim();
+                            if (strDate.includes('/')) {
+                                const p = strDate.split('/');
+                                if (p.length === 3) {
+                                    if (p[2].length === 4) formattedDate = `${p[2]}-${p[1].padStart(2, '0')}-${p[0].padStart(2, '0')}`;
+                                    else formattedDate = `${p[0]}-${p[1].padStart(2, '0')}-${p[2].padStart(2, '0')}`;
+                                }
+                            } else {
+                                formattedDate = strDate.split('T')[0];
+                            }
+                        }
+
+                        let motorista = kMot ? row[kMot].toString().trim() : '';
+                        let getColVal = (terms) => {
+                            let foundKey = keys.find(k => terms.some(t => normalizeText(k).includes(t)));
+                            return foundKey ? row[foundKey] : '-';
+                        };
+
+                        return {
+                            Data: formattedDate,
+                            Motorista: motorista,
+                            Subtipo: kSub ? row[kSub].toString().trim().toUpperCase() : 'SAÍDA',
+                            tipoOriginal: getColVal(['tipo']),
+                            placa: getColVal(['placa', 'veiculo', 'caminhao']),
+                            equipe: getColVal(['equipe', 'cc', 'projeto']),
+                            mapa: getColVal(['mapa', 'rota']),
+                            km: getColVal(['km', 'quilometragem']),
+                            hrInicio: getColVal(['hr inicio', 'hora inicio', 'inicio', 'h.inicio']),
+                            hrFinal: getColVal(['hr final', 'hora final', 'termino', 'fim', 'h.final']),
+                            tempo: getColVal(['tempo', 'duracao']),
+                            gerouOS: getColVal(['gerou os', 'os', 'ordem servico', 'ordem']),
+                            observacoes: getColVal(['obs', 'observacao', 'observacoes', 'comentario'])
+                        };
+                    }).filter(c => c.Data !== "" && c.Motorista !== "");
+
+                    localStorage.setItem('globalChecklists_v11', JSON.stringify(globalChecklists));
+                    ajustarDatasAuto();
+                }
+
+                if (fFaltas) {
+                    const txt = await fFaltas.text();
+                    const lines = txt.split('\n');
+                    globalFaltas = [];
+                    lines.forEach(l => {
+                        const normL = normalizeText(l);
+                        if (termosAbono.some(t => normL.includes(t))) {
+                            globalFaltas.push({ RawText: l, Motivo: "Ausência Identificada" });
+                        }
+                    });
+                    localStorage.setItem('globalFaltas_v11', JSON.stringify(globalFaltas));
+                }
+
+                runEngine();
+                alert("Dados processados e atualizados com sucesso!");
+            } catch (err) {
+                console.error(err);
+                alert("Erro ao ler os arquivos. Certifique-se de usar arquivos nos formatos .xlsx ou .txt.");
+            }
+        }
+
+        function runEngine() {
+            let dataInicio = document.getElementById('filtroDataInicio').value;
+            let dataFim = document.getElementById('filtroDataFim').value;
+
+            if (!dataInicio || !dataFim) {
+                ajustarDatasAuto();
+                dataInicio = document.getElementById('filtroDataInicio').value;
+                dataFim = document.getElementById('filtroDataFim').value;
+            }
+
+            let datas = [];
+            let currDate = new Date(dataInicio + 'T00:00:00');
+            let endDate = new Date(dataFim + 'T00:00:00');
+
+            while (currDate <= endDate) {
+                datas.push(currDate.toISOString().split('T')[0]);
+                currDate.setDate(currDate.getDate() + 1);
+            }
+
+            if (datas.length === 0) {
+                datas = ["2026-11-01", "2026-11-02", "2026-11-03", "2026-11-04", "2026-11-05"];
+            }
+
+            const cargoFilter = document.getElementById('filterCargo').value;
+
+            let ativosFiltrados = globalAtivos.filter(a => {
+                if (isCargoIgnorado(a.Cargo)) return false;
+                if (cargoFilter && !normalizeText(a.Cargo).includes(normalizeText(cargoFilter))) return false;
+
+                const isNight = a.Escala.includes('22:00') || a.Escala.includes('21:00');
+                const isVespertine = a.Escala.startsWith('14:00');
+                const isDiurno = !isNight && !isVespertine;
+
+                if (escopoAtual === 'DU' && !isDiurno) return false;
+                if (escopoAtual === 'AZ' && !(isNight || isVespertine)) return false;
+
+                return true;
+            });
+
+            let totalRealizados = 0;
+            let totalPendentes = 0;
+            let totalAbonados = 0;
+            let colabStats = [];
+
+            ativosFiltrados.forEach(colab => {
+                const isMotorista = normalizeText(colab.Cargo).includes('motorista');
+                const metaDiaria = isMotorista ? 2 : 1;
+
+                let colabObj = {
+                    nome: colab.Nome,
+                    cargo: colab.Cargo,
+                    escala: colab.Escala,
+                    equipe: colab.Equipe,
+                    metasEscaladas: 0,
+                    realizados: 0,
+                    pendentes: 0,
+                    abonados: 0,
+                    historico: []
+                };
+
+                datas.forEach(data => {
+                    const escalado = isDiaTrabalho(data, colab.Escala, colab.Nome);
+
+                    if (!escalado) {
+                        colabObj.historico.push({ data, esperado: "Folga Escala / Bucket", realizado: "-", status: "Folga Escala" });
+                        return;
+                    }
+
+                    colabObj.metasEscaladas += metaDiaria;
+
+                    const primeiroNome = normalizeText(colab.Nome).split(' ')[0];
+                    const checklistsNoDia = globalChecklists.filter(c => c.Data === data && normalizeText(c.Motorista).includes(primeiroNome));
+                    const abonado = globalFaltas.find(f => normalizeText(f.RawText).includes(primeiroNome));
+
+                    if (abonado) {
+                        colabObj.abonados += metaDiaria;
+                        totalAbonados += metaDiaria;
+                        colabObj.historico.push({ data, esperado: `${metaDiaria} Checklists`, realizado: "Abonado", status: "Abonado" });
+                    } else {
+                        let qtdeFeita = checklistsNoDia.length;
+                        if (isMotorista) {
+                            if (qtdeFeita >= 2) {
+                                colabObj.realizados += 2;
+                                totalRealizados += 2;
+                                colabObj.historico.push({ data, esperado: "2 Checklists (Saída/Retorno)", realizado: `${qtdeFeita} Realizados`, status: "Realizado" });
+                            } else if (qtdeFeita === 1) {
+                                colabObj.realizados += 1;
+                                colabObj.pendentes += 1;
+                                totalRealizados += 1;
+                                totalPendentes += 1;
+                                colabObj.historico.push({ data, esperado: "2 Checklists (Saída/Retorno)", realizado: "1 Realizado (Parcial)", status: "Parcial" });
+                            } else {
+                                colabObj.pendentes += 2;
+                                totalPendentes += 2;
+                                colabObj.historico.push({ data, esperado: "2 Checklists (Saída/Retorno)", realizado: "0 Realizado", status: "Não Realizado" });
+                            }
+                        } else {
+                            if (qtdeFeita >= 1) {
+                                colabObj.realizados += 1;
+                                totalRealizados += 1;
+                                colabObj.historico.push({ data, esperado: "1 Checklist Saída", realizado: "Checklist Saída", status: "Realizado" });
+                            } else {
+                                colabObj.pendentes += 1;
+                                totalPendentes += 1;
+                                colabObj.historico.push({ data, esperado: "1 Checklist Saída", realizado: "Nenhum", status: "Não Realizado" });
+                            }
+                        }
+                    }
+                });
+
+                const totalConsiderado = colabObj.metasEscaladas - colabObj.abonados;
+                colabObj.aderencia = totalConsiderado > 0 ? parseFloat(((colabObj.realizados / totalConsiderado) * 100).toFixed(1)) : 100.0;
+                colabStats.push(colabObj);
+            });
+
+            colabStats.sort((a, b) => b.pendentes - a.pendentes || a.aderencia - b.aderencia);
+
+            document.getElementById('cardElegiveis').innerText = ativosFiltrados.length;
+            document.getElementById('cardRealizaram').innerText = totalRealizados;
+            document.getElementById('cardNaoRealizaram').innerText = totalPendentes;
+            document.getElementById('cardAbonados').innerText = totalAbonados;
+
+            const totalGlobalConsiderado = totalRealizados + totalPendentes;
+            const aderenciaGeral = totalGlobalConsiderado > 0 ? ((totalRealizados / totalGlobalConsiderado) * 100).toFixed(1) : 100.0;
+            document.getElementById('cardAderencia').innerText = aderenciaGeral + "%";
+            document.getElementById('cardOfensoresCount').innerText = colabStats.filter(c => c.pendentes > 0).length;
+
+            renderGauge(parseFloat(aderenciaGeral));
+            renderRanking(colabStats);
+            renderHeatmap(colabStats, datas);
+            renderAIInsights(aderenciaGeral, colabStats);
+        }
+
+        const gaugeCenterTextPlugin = {
+            id: 'gaugeCenterText',
+            afterDraw(chart) {
+                const { ctx, chartArea: { width, height, top, left } } = chart;
+                ctx.save();
+                const score = chart.data.datasets[0].data[0];
+                const isMetaAtingida = score >= 95;
+                
+                ctx.font = 'bold 36px Segoe UI, sans-serif';
+                ctx.fillStyle = score >= 95 ? '#10b981' : (score >= 90 ? '#d97706' : '#ef4444');
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                const centerX = left + width / 2;
+                const centerY = top + height / 1.35;
+                ctx.fillText(score.toFixed(1) + '%', centerX, centerY - 15);
+
+                ctx.font = 'bold 12px Segoe UI, sans-serif';
+                const badgeText = isMetaAtingida ? '✔ Meta Atingida' : '✖ Meta Não Atingida';
+                const badgeWidth = ctx.measureText(badgeText).width + 24;
+                const badgeHeight = 26;
+                const badgeX = centerX - badgeWidth / 2;
+                const badgeY = centerY + 12;
+
+                ctx.fillStyle = isMetaAtingida ? '#d1fae5' : '#fee2e2';
+                ctx.beginPath();
+                ctx.roundRect(badgeX, badgeY, badgeWidth, badgeHeight, 13);
+                ctx.fill();
+
+                ctx.fillStyle = isMetaAtingida ? '#065f46' : '#991b1b';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(badgeText, centerX, badgeY + badgeHeight / 2);
+                ctx.restore();
+            }
+        };
+
+        function renderGauge(val) {
+            const ctx = document.getElementById('gaugeChart').getContext('2d');
+            if (gaugeChartInstance) gaugeChartInstance.destroy();
+
+            const color = val >= 95 ? '#10b981' : (val >= 90 ? '#f59e0b' : '#ef4444');
+
+            gaugeChartInstance = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    datasets: [{
+                        data: [val, Math.max(0, 100 - val)],
+                        backgroundColor: [color, '#e2e8f0'],
+                        borderWidth: 0,
+                        circumference: 180,
+                        rotation: 270
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: '75%',
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: { enabled: false }
+                    }
+                },
+                plugins: [gaugeCenterTextPlugin]
+            });
+        }
+
+        function renderRanking(list) {
+            const tbody = document.getElementById('rankingTableBody');
+            tbody.innerHTML = '';
+            list.forEach(item => {
+                let badge = '<span class="badge bg-success">Conforme</span>';
+                if (item.pendentes >= 2) badge = '<span class="badge bg-danger">Crítico</span>';
+                else if (item.pendentes === 1) badge = '<span class="badge bg-warning text-dark">Atenção</span>';
+
+                const tr = document.createElement('tr');
+                tr.style.cursor = 'pointer';
+                tr.onclick = () => openDrawerColab(item);
+                tr.innerHTML = `
+                    <td>${badge}</td>
+                    <td class="fw-bold">${item.nome}</td>
+                    <td>${item.cargo}</td>
+                    <td><small class="text-muted">${item.escala}</small></td>
+                    <td>${item.metasEscaladas}</td>
+                    <td class="text-success fw-bold">${item.realizados}</td>
+                    <td class="text-danger fw-bold">${item.pendentes}</td>
+                    <td class="fw-bold">${item.aderencia}%</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function renderHeatmap(list, datas) {
+            const thead = document.querySelector('#heatmapTable thead');
+            const tbody = document.querySelector('#heatmapTable tbody');
+            const tfoot = document.querySelector('#heatmapTable tfoot');
+            thead.innerHTML = '';
+            tbody.innerHTML = '';
+            tfoot.innerHTML = '';
+
+            let header = '<th class="sortable" onclick="sortTable(\'heatmapTable\', 0)">Colaborador <span class="sort-icon">▲▼</span></th>';
+            datas.forEach((d, i) => {
+                header += `<th class="sortable" onclick="sortTable(\'heatmapTable\', ${i + 1})">${d.split('-').reverse().join('/')} <span class="sort-icon">▲▼</span></th>`;
+            });
+            thead.innerHTML = `<tr>${header}</tr>`;
+
+            let totaisNaoRealizadosPorDia = new Array(datas.length).fill(0);
+
+            let listaFiltrada = list;
+            if (filterStatusHeatmap !== 'TODOS') {
+                listaFiltrada = list.filter(colab => {
+                    return colab.historico.some(h => h.status === filterStatusHeatmap);
+                });
+            }
+
+            listaFiltrada.forEach(colab => {
+                let row = `<td class="text-start fw-bold">${colab.nome} <small class="text-muted">(${colab.cargo.split(' ')[0]})</small></td>`;
+                colab.historico.forEach((h, hIdx) => {
+                    let cls = 'bg-danger text-white';
+                    let icon = '🔴';
+                    let isClickableChecklist = false;
+                    let isClickableOcorrencia = false;
+
+                    if (h.status === 'Realizado' || h.status === 'Parcial') { 
+                        cls = h.status === 'Realizado' ? 'bg-success text-white' : 'bg-warning text-dark'; 
+                        icon = h.status === 'Realizado' ? '🟢' : '🟡'; 
+                        isClickableChecklist = true;
+                        if (h.status === 'Parcial') totaisNaoRealizadosPorDia[hIdx] += 1;
+                    }
+                    else if (h.status === 'Abonado') { cls = 'bg-secondary text-white'; icon = '⚪'; }
+                    else if (h.status === 'Folga Escala') { cls = 'bg-folga'; icon = '🟦'; }
+                    else if (h.status === 'Não Realizado') {
+                        isClickableOcorrencia = true;
+                        const pesoNaoRealizado = h.esperado.includes('2 Checklists') ? 2 : 1;
+                        totaisNaoRealizadosPorDia[hIdx] += pesoNaoRealizado;
+                    }
+
+                    if (isClickableChecklist) {
+                        row += `<td class="${cls} clickable-cell" title="Clique para ver detalhes do checklist" onclick="openDrawerChecklist('${colab.nome}', '${h.data}')">${icon}</td>`;
+                    } else if (isClickableOcorrencia) {
+                        row += `<td class="${cls} clickable-cell" title="Clique para abrir o Formulário de Ocorrência" onclick="openDrawerOcorrencia('${colab.nome}', '${colab.cargo}', '${h.data}')">${icon}</td>`;
+                    } else {
+                        row += `<td class="${cls}" title="${h.data}: ${h.status}">${icon}</td>`;
+                    }
+                });
+                tbody.innerHTML += `<tr>${row}</tr>`;
+            });
+
+            let footRow = `<td class="text-start bg-dark text-white">Total Não Realizados ❌</td>`;
+            totaisNaoRealizadosPorDia.forEach(totalDia => {
+                footRow += `<td class="bg-danger text-white fw-bold">${totalDia}</td>`;
+            });
+            tfoot.innerHTML = `<tr>${footRow}</tr>`;
+        }
+
+        // ABRIR FORMULÁRIO DE OCORRÊNCIA (AO CLICAR NA BOLINHA VERMELHA)
+        function openDrawerOcorrencia(nomeColab, cargoColab, dataStr) {
+            const drawer = document.getElementById('investigationDrawer');
+            const backdrop = document.getElementById('drawerBackdrop');
+            const title = document.getElementById('drawerTitle');
+            const content = document.getElementById('drawerContent');
+
+            title.innerHTML = `<i class="fa-solid fa-file-lines text-danger"></i> Formulário de Ocorrências`;
+
+            const dataFormatada = dataStr.split('-').reverse().join('/');
+
+            content.innerHTML = `
+                <div class="p-3 border rounded bg-white text-dark shadow-sm">
+                    <div class="text-center border-bottom pb-2 mb-3">
+                        <h5 class="fw-bold text-uppercase mb-1">FORMULÁRIO DE OCORRÊNCIAS</h5>
+                        <p class="text-muted small mb-0">Controle de Aderência Operacional</p>
+                    </div>
+
+                    <div class="row g-2 mb-3 small">
+                        <div class="col-8">
+                            <strong>DATA:</strong> <input type="text" class="form-control form-control-sm d-inline-block w-75" value="${dataFormatada}">
+                        </div>
+                        <div class="col-4">
+                            <strong>Horário:</strong> <input type="text" class="form-control form-control-sm d-inline-block w-50" value="08:00">
+                        </div>
+                        <div class="col-12 mt-2">
+                            <strong>COLABORADOR:</strong> <input type="text" class="form-control form-control-sm fw-bold" value="${nomeColab}">
+                        </div>
+                        <div class="col-12 mt-2">
+                            <strong>CARGO:</strong> <input type="text" class="form-control form-control-sm" value="${cargoColab}">
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold text-danger">Ocorrência (para uso exclusivo do empregador):</label>
+                        <textarea class="form-control form-control-sm" rows="3">Colaborador acima identificado não realizou o checklist obrigatório no dia ${dataFormatada}.</textarea>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">Justificativa / Relato (Para uso exclusivo do colaborador):</label>
+                        <textarea class="form-control form-control-sm" rows="3" placeholder="Digite aqui a justificativa relatada pelo colaborador..."></textarea>
+                    </div>
+
+                    <div class="row g-2 mb-3 small border-top pt-2">
+                        <div class="col-4 text-center fw-bold text-muted">Entrevistador</div>
+                        <div class="col-4 text-center fw-bold text-muted">Colaborador</div>
+                        <div class="col-4 text-center fw-bold text-muted">Testemunhas</div>
+                    </div>
+
+                    <div class="mb-3 small border p-2 rounded bg-light">
+                        <div class="mb-1"><strong>Testemunhas:</strong></div>
+                        <div class="row g-2">
+                            <div class="col-6">Nome 1: <input type="text" class="form-control form-control-sm"></div>
+                            <div class="col-6">RG/CPF: <input type="text" class="form-control form-control-sm"></div>
+                            <div class="col-6 mt-1">Nome 2: <input type="text" class="form-control form-control-sm"></div>
+                            <div class="col-6 mt-1">RG/CPF: <input type="text" class="form-control form-control-sm"></div>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">Providência:</label>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="provNao">
+                            <label class="form-check-label small" for="provNao">( ) Não - Motivo: <input type="text" class="form-control form-control-sm d-inline-block w-75" placeholder="Especifique..."></label>
+                        </div>
+                        <div class="form-check mt-1">
+                            <input class="form-check-input" type="checkbox" id="provSim">
+                            <label class="form-check-label small" for="provSim">( ) Sim - Motivo: <input type="text" class="form-control form-control-sm d-inline-block w-75" placeholder="Especifique..."></label>
+                        </div>
+                    </div>
+
+                    <div class="text-end mt-4 no-print">
+                        <button class="btn btn-secondary btn-sm" onclick="closeDrawer()">Fechar</button>
+                        <button class="btn btn-primary btn-sm px-4 fw-bold" onclick="window.print()"><i class="fa-solid fa-print"></i> Imprimir / Gerar PDF</button>
+                    </div>
+                </div>
+            `;
+
+            drawer.classList.add('open');
+            backdrop.classList.add('show');
+        }
+
+        // ABRIR DRAWER COM OS DETALHES DO CHECKLIST REALIZADO (AO CLICAR NA BOLINHA VERDE)
+        function openDrawerChecklist(nomeColab, dataStr) {
+            const drawer = document.getElementById('investigationDrawer');
+            const backdrop = document.getElementById('drawerBackdrop');
+            const title = document.getElementById('drawerTitle');
+            const content = document.getElementById('drawerContent');
+
+            title.innerHTML = `<i class="fa-solid fa-circle-check text-success"></i> Checklists de ${nomeColab.split(' ')[0]} (${dataStr.split('-').reverse().join('/')})`;
+
+            const primeiroNome = normalizeText(nomeColab).split(' ')[0];
+            const registros = globalChecklists.filter(c => c.Data === dataStr && normalizeText(c.Motorista).includes(primeiroNome));
+
+            if (registros.length === 0) {
+                content.innerHTML = `<div class="alert alert-warning">Nenhum detalhe de checklist encontrado na planilha para esta data.</div>`;
+            } else {
+                let html = '';
+                registros.forEach((reg, idx) => {
+                    html += `
+                        <div class="card card-custom p-3 mb-3 border-success">
+                            <h6 class="fw-bold text-success mb-2"><i class="fa-solid fa-truck"></i> Registro #${idx + 1} - Subtipo: ${reg.Subtipo}</h6>
+                            <div class="row g-2 small">
+                                <div class="col-6"><strong>Tipo:</strong> ${reg.tipoOriginal}</div>
+                                <div class="col-6"><strong>Placa:</strong> ${reg.placa}</div>
+                                <div class="col-6"><strong>Motorista:</strong> ${reg.Motorista}</div>
+                                <div class="col-6"><strong>Equipe:</strong> ${reg.equipe}</div>
+                                <div class="col-6"><strong>MAPA:</strong> ${reg.mapa}</div>
+                                <div class="col-6"><strong>KM:</strong> ${reg.km}</div>
+                                <div class="col-6"><strong>SUBTIPO:</strong> ${reg.Subtipo}</div>
+                                <div class="col-6"><strong>HR INICIO:</strong> ${reg.hrInicio}</div>
+                                <div class="col-6"><strong>HR FINAL:</strong> ${reg.hrFinal}</div>
+                                <div class="col-6"><strong>Tempo:</strong> ${reg.tempo}</div>
+                                <div class="col-6"><strong>Gerou OS?:</strong> ${reg.gerouOS}</div>
+                                <div class="col-12"><strong>Observações:</strong> ${reg.observacoes}</div>
+                            </div>
+                        </div>
+                    `;
+                });
+                content.innerHTML = html;
+            }
+
+            drawer.classList.add('open');
+            backdrop.classList.add('show');
+        }
+
+        function openDrawerColab(item) {
+            const drawer = document.getElementById('investigationDrawer');
+            const backdrop = document.getElementById('drawerBackdrop');
+            const title = document.getElementById('drawerTitle');
+            const content = document.getElementById('drawerContent');
+
+            title.innerHTML = `<i class="fa-solid fa-user-gear text-primary"></i> Detalhamento do Colaborador`;
+
+            let histTable = '';
+            item.historico.forEach(h => {
+                let badgeCls = 'bg-danger';
+                if (h.status === 'Realizado') badgeCls = 'bg-success';
+                else if (h.status === 'Parcial') badgeCls = 'bg-warning text-dark';
+                else if (h.status === 'Abonado') badgeCls = 'bg-secondary';
+                else if (h.status === 'Folga Escala') badgeCls = 'bg-info text-dark';
+
+                histTable += `
+                    <tr>
+                        <td>${h.data.split('-').reverse().join('/')}</td>
+                        <td>${h.esperado}</td>
+                        <td>${h.realizado}</td>
+                        <td><span class="badge ${badgeCls}">${h.status}</span></td>
+                    </tr>
+                `;
+            });
+
+            content.innerHTML = `
+                <h6 class="fw-bold text-primary mb-1">${item.nome}</h6>
+                <p class="text-muted small mb-3">${item.cargo} | Equipe: ${item.equipe}</p>
+                <div class="p-2 mb-3 bg-light rounded small border">
+                    <strong>Escala:</strong> ${item.escala}
+                </div>
+                <div class="row g-2 mb-3 small">
+                    <div class="col-6"><strong>Metas Escaladas:</strong> ${item.metasEscaladas}</div>
+                    <div class="col-6"><strong>Realizados:</strong> ${item.realizados}</div>
+                    <div class="col-6"><strong>Não Realizados:</strong> ${item.pendentes}</div>
+                    <div class="col-6"><strong>Aderência:</strong> ${item.aderencia}%</div>
+                </div>
+                <h6 class="fw-bold mt-4 mb-2">Histórico Diário Detalhado</h6>
+                <div class="table-responsive">
+                    <table class="table table-sm table-bordered small">
+                        <thead><tr><th>Data</th><th>Esperado</th><th>Realizado</th><th>Status</th></tr></thead>
+                        <tbody>${histTable}</tbody>
+                    </table>
+                </div>
+            `;
+
+            drawer.classList.add('open');
+            backdrop.classList.add('show');
+        }
+
+        function closeDrawer() {
+            document.getElementById('investigationDrawer').classList.remove('open');
+            document.getElementById('drawerBackdrop').classList.remove('show');
+        }
+
+        function renderAIInsights(aderencia, list) {
+            const container = document.getElementById('aiInsights');
+            const ofensores = list.filter(l => l.pendentes > 0);
+            container.innerHTML = `
+                <div class="col-md-6"><div class="p-3 border rounded bg-light text-dark">💡 Aderência atual para o escopo [<strong>${escopoAtual}</strong>] está em <strong>${aderencia}%</strong>.</div></div>
+                <div class="col-md-6"><div class="p-3 border rounded bg-light text-dark">🔴 <strong>Nova Ação:</strong> Clique em qualquer bolinha vermelha do Heatmap para abrir o Formulário de Ocorrência institucional preenchido!</div></div>
+                <div class="col-md-6"><div class="p-3 border rounded bg-light text-dark">⚠️ Existem <strong>${ofensores.length} colaboradores</strong> com checklists não realizados no período.</div></div>
+                <div class="col-md-6"><div class="p-3 border rounded bg-light text-dark">🔄 Use a impressão integrada no painel para gerar o PDF ou imprimir a ocorrência.</div></div>
+            `;
+        }
+
+        function limparFiltros() {
+            document.getElementById('filterCargo').value = "";
+            setEscopo('GERAL');
+            setFilterStatusHeatmap('TODOS');
+        }
+    </script>
+</body>
+</html>
